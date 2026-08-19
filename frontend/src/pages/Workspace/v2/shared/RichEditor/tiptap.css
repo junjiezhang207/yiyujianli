@@ -1,0 +1,349 @@
+/* TipTap 编辑器样式 */
+.ProseMirror {
+  min-height: 300px;
+  outline: none;
+}
+
+.ProseMirror:focus {
+  outline: none;
+}
+
+/* 无序列表样式 */
+.ProseMirror ul {
+  list-style-type: disc;
+  padding-left: 1.75rem; /* 统一块级缩进，首行与后续行一起右移 */
+  margin: 0.5rem 0;
+}
+
+.ProseMirror ul li {
+  margin: 0.25rem 0;
+}
+
+.ProseMirror ul li p {
+  margin: 0;
+  padding-left: 0.25rem; /* 轻微内缩，确保首行也缩进而非仅后续行挂起 */
+}
+
+/* 一级列表 marker：深黑色 */
+.ProseMirror ul > li::marker,
+.ProseMirror ol > li::marker {
+  color: #111111;
+}
+
+/* 有序列表样式 */
+.ProseMirror ol {
+  list-style-type: decimal;
+  padding-left: 1.75rem; /* 统一块级缩进 */
+  margin: 0.5rem 0;
+}
+
+.ProseMirror ol li {
+  margin: 0.25rem 0;
+}
+
+.ProseMirror ol li p {
+  margin: 0;
+  padding-left: 0.25rem;
+}
+
+/* 嵌套列表：尽量与父级对齐，减小缩进 */
+.ProseMirror ul ul,
+.ProseMirror ol ul,
+.ProseMirror ul ol,
+.ProseMirror ol ol {
+  list-style-type: circle;
+  padding-left: 0.25rem; /* 接近父级左侧 */
+  margin-left: 0;
+}
+
+.ProseMirror ul ul ul,
+.ProseMirror ol ul ul,
+.ProseMirror ul ol ol,
+.ProseMirror ol ol ol {
+  list-style-type: square;
+  padding-left: 0.25rem;
+  margin-left: 0;
+}
+
+/* 二级及更深列表 marker：浅色 */
+.ProseMirror ul ul > li::marker,
+.ProseMirror ul ol > li::marker,
+.ProseMirror ol ul > li::marker,
+.ProseMirror ol ol > li::marker {
+  color: #d1d5db;
+}
+
+/* 段落样式 */
+.ProseMirror p {
+  margin: 0.25rem 0;
+}
+
+/* 加粗 */
+.ProseMirror strong {
+  font-weight: 700;
+}
+
+/* 斜体 */
+.ProseMirror em {
+  font-style: italic;
+}
+
+/* 下划线 */
+.ProseMirror u {
+  text-decoration: underline;
+}
+
+/* 标题样式 */
+.ProseMirror h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 1rem 0 0.5rem;
+}
+
+.ProseMirror h2 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin: 0.5rem 0 0.5rem;
+}
+
+.ProseMirror h3 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 0.5rem 0 0.25rem;
+}
+
+/* 引用块 */
+.ProseMirror blockquote {
+  border-left: 3px solid #d1d5db;
+  padding-left: 1rem;
+  margin: 0.5rem 0;
+  color: #6b7280;
+}
+
+/* 代码 */
+.ProseMirror code {
+  background-color: rgba(0, 0, 0, 0.05);
+  border-radius: 0.25rem;
+  padding: 0.1rem 0.3rem;
+  font-family: monospace;
+  font-size: 0.9em;
+}
+
+/* 高亮 */
+.ProseMirror mark {
+  background-color: #fef08a;
+  padding: 0.1rem 0.2rem;
+  border-radius: 0.125rem;
+}
+
+/* 划词改写锁定高亮：输入框聚焦后依然可见 */
+.ProseMirror .selection-lock-highlight {
+  background: rgba(147, 197, 253, 0.55);
+  box-shadow: inset 0 0 0 1px rgba(59, 130, 246, 0.45);
+  border-radius: 2px;
+}
+
+/* 占位符样式 */
+.ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: #adb5bd;
+  pointer-events: none;
+  height: 0;
+}
+
+/* 聚焦时的边框 */
+.ProseMirror-focused {
+  outline: none;
+}
+
+/* 仅隐藏“空父级列表项”的 marker，避免带文本的父项 marker 消失 */
+.ProseMirror ul > li:has(> ul):has(> p:first-child:empty),
+.ProseMirror ul > li:has(> ul):has(> p:first-child:has(> br:only-child)),
+.ProseMirror ul > li:has(> ol):has(> p:first-child:empty),
+.ProseMirror ul > li:has(> ol):has(> p:first-child:has(> br:only-child)),
+.ProseMirror ol > li:has(> ul):has(> p:first-child:empty),
+.ProseMirror ol > li:has(> ul):has(> p:first-child:has(> br:only-child)),
+.ProseMirror ol > li:has(> ol):has(> p:first-child:empty),
+.ProseMirror ol > li:has(> ol):has(> p:first-child:has(> br:only-child)) {
+  list-style-type: none;
+}
+
+/* 隐藏空的段落（作为占位父级的段落），支持包含 br 的情况 */
+.ProseMirror ul > li:has(> ul) > p:first-child:empty,
+.ProseMirror ul > li:has(> ul) > p:first-child:has(> br:only-child),
+.ProseMirror ul > li:has(> ol) > p:first-child:empty,
+.ProseMirror ul > li:has(> ol) > p:first-child:has(> br:only-child),
+.ProseMirror ol > li:has(> ul) > p:first-child:empty,
+.ProseMirror ol > li:has(> ul) > p:first-child:has(> br:only-child),
+.ProseMirror ol > li:has(> ol) > p:first-child:empty,
+.ProseMirror ol > li:has(> ol) > p:first-child:has(> br:only-child) {
+  display: none;
+  height: 0;
+  margin: 0;
+  padding: 0;
+}
+
+/* ===================== */
+/* 划词改写气泡样式     */
+/* ===================== */
+
+.tippy-box[data-reference] .ai-polish-bubble,
+.ai-polish-bubble {
+  font-family:
+    'Noto Sans SC',
+    'PingFang SC',
+    'Microsoft YaHei UI',
+    system-ui,
+    sans-serif;
+  background:
+    linear-gradient(165deg, rgba(255, 255, 255, 0.99) 0%, rgba(241, 245, 249, 0.96) 100%);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 16px;
+  padding: 10px 12px 10px 14px;
+  box-shadow:
+    0 4px 6px rgba(15, 23, 42, 0.04),
+    0 18px 40px rgba(15, 23, 42, 0.1),
+    0 0 0 1px rgba(255, 255, 255, 0.6) inset;
+  backdrop-filter: blur(14px) saturate(1.2);
+  min-width: min(520px, calc(100vw - 32px));
+  max-width: calc(100vw - 24px);
+}
+
+.dark .ai-polish-bubble {
+  background:
+    linear-gradient(165deg, rgba(30, 32, 38, 0.98) 0%, rgba(15, 23, 42, 0.97) 100%);
+  border-color: rgba(71, 85, 105, 0.45);
+  box-shadow:
+    0 4px 6px rgba(0, 0, 0, 0.2),
+    0 22px 48px rgba(2, 6, 23, 0.55),
+    0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+}
+
+.ai-polish-input {
+  flex: 1 1 10rem;
+  min-width: 0;
+  width: auto;
+  max-width: 22rem;
+  padding: 10px 14px;
+  font-size: 13px;
+  line-height: 1.45;
+  letter-spacing: 0.01em;
+  border-radius: 14px;
+  border: 1px solid rgba(99, 102, 241, 0.18);
+  background: rgba(255, 255, 255, 0.88);
+  color: #0f172a;
+  outline: none;
+  transition:
+    border-color 0.18s ease,
+    box-shadow 0.18s ease,
+    background 0.18s ease;
+}
+
+.dark .ai-polish-input {
+  background: rgba(15, 23, 42, 0.65);
+  border-color: rgba(99, 102, 241, 0.28);
+  color: #f1f5f9;
+}
+
+.ai-polish-input::placeholder {
+  color: #64748b;
+  opacity: 0.88;
+}
+
+.dark .ai-polish-input::placeholder {
+  color: #94a3b8;
+  opacity: 0.75;
+}
+
+.ai-polish-input:focus {
+  border-color: rgba(79, 70, 229, 0.55);
+  background: #fff;
+  box-shadow:
+    0 0 0 3px rgba(99, 102, 241, 0.14),
+    0 6px 20px rgba(79, 70, 229, 0.08);
+}
+
+.dark .ai-polish-input:focus {
+  background: rgba(15, 23, 42, 0.92);
+  box-shadow:
+    0 0 0 3px rgba(99, 102, 241, 0.22),
+    0 6px 20px rgba(79, 70, 229, 0.12);
+}
+
+.ai-polish-input:disabled {
+  opacity: 0.5;
+}
+
+.ai-polish-send {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  background: #e5e7eb;
+  color: #1e293b;
+  border: 1px solid #cbd5e1;
+  cursor: pointer;
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease,
+    filter 0.18s ease;
+  flex-shrink: 0;
+  box-shadow:
+    0 6px 14px rgba(15, 23, 42, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+.ai-polish-send:hover:not(:disabled) {
+  filter: brightness(1);
+  transform: translateY(-1px);
+  box-shadow:
+    0 10px 20px rgba(15, 23, 42, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  background: #f1f5f9;
+}
+
+.ai-polish-send:active:not(:disabled) {
+  transform: translateY(0);
+  filter: brightness(0.96);
+}
+
+.ai-polish-send:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 3px rgba(148, 163, 184, 0.35),
+    0 8px 18px rgba(15, 23, 42, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.75);
+}
+
+.dark .ai-polish-send {
+  background: #334155;
+  border-color: #475569;
+  color: #f8fafc;
+}
+
+.dark .ai-polish-send:hover:not(:disabled) {
+  background: #475569;
+  box-shadow:
+    0 12px 28px rgba(2, 6, 23, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15);
+}
+
+.ai-polish-send svg {
+  color: currentColor;
+}
+
+.ai-polish-send:disabled {
+  opacity: 1;
+  cursor: not-allowed;
+  transform: none;
+  filter: none;
+  background: #e5e7eb;
+  border-color: #cbd5e1;
+  color: #64748b;
+  box-shadow:
+    0 6px 14px rgba(15, 23, 42, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}

@@ -1,0 +1,90 @@
+fastapi==0.115.11
+uvicorn[standard]==0.34.0
+pydantic==2.10.6
+python-dotenv==1.0.1
+requests==2.32.3
+httpx[http2]==0.28.1
+reportlab==4.2.5
+instructor>=1.5.0
+# mineru requires openai>=1.70.0
+openai>=1.70.0,<3
+# mineru requires json-repair>=0.46.2
+json-repair>=0.46.2
+zhipuai==2.1.5.20250825
+sse-starlette==1.8.2
+
+# Database
+sqlalchemy>=2.0.36
+alembic==1.13.1
+pymysql==1.1.0
+psycopg[binary]==3.1.19  # PostgreSQL driver (psycopg3)
+psycopg2-binary>=2.9.0  # PostgreSQL driver (psycopg2，postgresql+psycopg2:// 时使用)
+pgvector>=0.2.0  # PostgreSQL vector extension support
+
+# Authentication
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+email-validator==2.1.1
+bcrypt==3.2.2
+
+# OpenManus dependencies
+tenacity~=9.0.0
+loguru~=0.7.3
+tiktoken~=0.9.0
+
+# Browser automation
+browser-use~=0.1.40
+playwright~=1.51.0
+browsergym~=0.13.3
+
+# Search engines
+googlesearch-python~=1.3.0
+baidusearch~=1.0.3
+duckduckgo_search~=7.5.3
+
+# Data processing
+numpy<2.0.0
+datasets~=3.4.1
+html2text~=2024.2.26
+# mineru requires pillow>=11.0.0; crawl4ai>=0.8.0 supports pillow>=10.4
+pillow>=11.0.0,<13
+gymnasium~=1.1.1
+PyMuPDF>=1.24.0
+
+# Infrastructure
+docker~=7.1.0
+mcp~=1.5.0
+boto3~=1.37.18
+beautifulsoup4~=4.13.3
+crawl4ai~=0.8.0
+markdownify
+mineru>=2.7.0
+# mineru requires pdfminer.six>=20251230
+pdfminer-six>=20251230
+
+# LangChain 1.x Agent runtime
+langchain>=1.0.0,<2.0.0
+langchain-openai>=1.0.0,<2.0.0
+langchain-core>=1.0.0,<2.0.0
+langgraph>=1.0.0,<2.0.0
+
+# Utilities
+aiofiles~=24.1.0
+colorama~=0.4.6
+unidiff~=0.7.5
+structlog
+paramiko==3.4.0
+tomli>=2.0.0
+# mineru requires huggingface-hub>=0.32.4
+huggingface-hub>=0.32.4,<1
+python-multipart~=0.0.22
+cos-python-sdk-v5>=1.9.30
+
+# TTS (Text-to-Speech) - Edge TTS（推荐）或 Coqui TTS
+edge-tts>=6.1.0
+# 如果需要使用 Coqui TTS（需要声音克隆），取消下面的注释
+# coqui-tts>=0.22.0
+# torch>=2.0.0
+# torchaudio>=2.0.0
+# librosa>=0.10.0
+# soundfile>=0.12.0

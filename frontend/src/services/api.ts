@@ -1,0 +1,1204 @@
+import axios from 'axios'
+import { getAuthHeaders } from '@/lib/authHeaders'
+import { getApiBaseUrl } from '@/lib/runtimeEnv'
+import type { Resume } from '@/types/resume'
+import type { ResumeData } from '@/pages/Workspace/v2/types'
+import { DEFAULT_RESUME_TEMPLATE } from '@/data/defaultTemplate'
+import type { PDFRenderMode } from './pdfRenderMode'
+
+function getPDFRenderEndpoint(path: '/api/pdf/render' | '/api/pdf/render/stream', mode: PDFRenderMode): string {
+  if (mode === 'remote') {
+    return `${getApiBaseUrl()}/api/admin/pdf${path.replace('/api/pdf', '')}`
+  }
+  return `${getApiBaseUrl()}${path}`
+}
+
+function parseApiErrorDetail(raw: string): string {
+  try {
+    const parsed = JSON.parse(raw)
+    const detail = parsed?.detail
+    if (typeof detail === 'string') return detail
+    if (detail && typeof detail === 'object') {
+      const message = (detail as { message?: string }).message
+      if (message) return message
+      return JSON.stringify(detail)
+    }
+    return parsed?.message || raw
+  } catch {
+    return raw
+  }
+}
+
+function parseSSEBlock(block: string): { eventType: string | null; eventData: string | null } {
+  let eventType: string | null = null
+  const dataLines: string[] = []
+
+  for (const rawLine of block.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n')) {
+    if (!rawLine || rawLine.startsWith(':')) continue
+    if (rawLine.startsWith('event:')) {
+      eventType = rawLine.slice(6).trim()
+      continue
+    }
+    if (rawLine.startsWith('data:')) {
+      const data = rawLine.slice(5)
+      dataLines.push(data.startsWith(' ') ? data.slice(1) : data)
+    }
+  }
+
+  return {
+    eventType,
+    eventData: dataLines.length > 0 ? dataLines.join('\n') : null,
+  }
+}
+
+function parsePDFHex(hexData: string, traceId?: string): Uint8Array {
+  const cleanedHex = hexData.replace(/\s+/g, '')
+  if (!cleanedHex) {
+    throw new Error('PDF data is empty')
+  }
+  if (!/^[0-9a-fA-F]+$/.test(cleanedHex)) {
+    throw new Error('PDF data is not valid hex')
+  }
+
+  const normalizedHex = cleanedHex.length % 2 === 0 ? cleanedHex : `0${cleanedHex}`
+  const matches = normalizedHex.match(/.{2}/g)
+  if (!matches) {
+    throw new Error('PDF data format is invalid')
+  }
+
+  const pdfData = new Uint8Array(matches.map(byte => parseInt(byte, 16)))
+  if (pdfData[0] !== 0x25 || pdfData[1] !== 0x50 || pdfData[2] !== 0x44 || pdfData[3] !== 0x46) {
+    console.error('[PDF TRACE][stream:pdf-header-invalid]', { traceId, firstBytes: Array.from(pdfData.slice(0, 8)) })
+    throw new Error('PDF data is corrupted')
+  }
+
+  return pdfData
+}
+
+export type UserEntitlement = {
+  plan: string
+  credits: number
+  daily_usage_count: number
+  subscription_status: string
+}
+
+export async function fetchUserEntitlement(): Promise<UserEntitlement> {
+  const { data } = await axios.get(`${getApiBaseUrl()}/api/auth/better/account`, {
+    headers: getAuthHeaders(),
+  })
+  return (data as { entitlement: UserEntitlement }).entitlement
+}
+
+export async function mockCheckout(packageName: 'starter' | 'pro'): Promise<UserEntitlement> {
+  const { data } = await axios.post(
+    `${getApiBaseUrl()}/api/billing/mock-checkout`,
+    { package: packageName },
+    { headers: getAuthHeaders() },
+  )
+  return data as UserEntitlement
+}
+
+export type PdfDownloadQuota = {
+  limit: number | null
+  used: number
+  remaining: number | null
+  unlimited: boolean
+}
+
+export async function fetchPdfDownloadQuota(): Promise<PdfDownloadQuota> {
+  const { data } = await axios.get(`${getApiBaseUrl()}/api/pdf/quota`, {
+    headers: getAuthHeaders(),
+  })
+  return data as PdfDownloadQuota
+}
+
+export async function recordPdfDownload(): Promise<PdfDownloadQuota> {
+  try {
+    const { data } = await axios.post(
+      `${getApiBaseUrl()}/api/pdf/downloads/record`,
+      {},
+      { headers: getAuthHeaders() },
+    )
+    return data as PdfDownloadQuota
+  } catch (error: any) {
+    if (error?.response?.status === 401) {
+      throw new Error('请先登录后再下载 PDF')
+    }
+    if (error?.response?.status === 403) {
+      throw new Error(
+        parseApiErrorDetail(JSON.stringify({ detail: error?.response?.data?.detail })) ||
+          'PDF 下载次数已达上限（10 次）',
+      )
+    }
+    const detail = error?.response?.data?.detail || error?.message || 'PDF 下载失败'
+    throw new Error(typeof detail === 'string' ? detail : parseApiErrorDetail(JSON.stringify({ detail })))
+  }
+}
+
+export async function logPDFRenderModeChange(fromMode: PDFRenderMode, toMode: PDFRenderMode): Promise<void> {
+  const url = `${getApiBaseUrl()}/api/admin/pdf/render-mode/log`
+  try {
+    await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders(),
+      },
+      body: JSON.stringify({
+        from_mode: fromMode,
+        to_mode: toMode,
+      }),
+    })
+  } catch (error) {
+    console.warn('[PDF TRACE][render-mode:backend-log-failed]', {
+      fromMode,
+      toMode,
+      error,
+    })
+  }
+}
+
+export async function aiTest(provider: 'zhipu' | 'doubao', prompt: string) {
+  const url = `${getApiBaseUrl()}/api/ai/test`
+  const { data } = await axios.post(url, { provider, prompt })
+  return data as { provider: string; result: string; usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number } }
+}
+
+export async function generateResume(provider: 'zhipu' | 'doubao', instruction: string, locale: 'zh' | 'en' = 'zh') {
+  const url = `${getApiBaseUrl()}/api/resume/generate`
+  const { data } = await axios.post(url, { provider, instruction, locale })
+  return data as { provider: string; resume: Resume }
+}
+
+/**
+ * 流式生成简历 - Markdown 输出 + JSON 数据
+ * 真正的流式输出，逐字显示
+ */
+export async function generateResumeStream(
+  instruction: string,
+  locale: 'zh' | 'en' = 'zh',
+  callbacks: {
+    onMarkdown: (chunk: string) => void
+    onStatus: (status: 'streaming' | 'parsing') => void
+    onComplete: (resume: Resume) => void
+    onError: (error: string) => void
+  }
+) {
+  const url = `${getApiBaseUrl()}/api/resume/generate/stream`
+  
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ provider: 'doubao', instruction, locale })
+    })
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+    
+    const reader = response.body?.getReader()
+    const decoder = new TextDecoder()
+    
+    if (!reader) {
+      throw new Error('无法获取响应流')
+    }
+    
+    let buffer = ''
+    callbacks.onStatus('streaming')
+    
+    // 处理 SSE 消息
+    const processLine = (line: string) => {
+      if (!line.startsWith('data: ')) return
+      
+      const data = line.slice(6).trim()
+      if (data === '[DONE]') return
+      
+      try {
+        const parsed = JSON.parse(data)
+        
+        if (parsed.type === 'markdown' && parsed.content) {
+          // 立即调用回调，触发 UI 更新
+          callbacks.onMarkdown(parsed.content)
+        }
+        
+        if (parsed.type === 'status' && parsed.content === 'parsing') {
+          callbacks.onStatus('parsing')
+        }
+        
+        if (parsed.type === 'json' && parsed.content) {
+          callbacks.onComplete(parsed.content as Resume)
+        }
+        
+        if (parsed.type === 'error') {
+          callbacks.onError(parsed.content || '未知错误')
+        }
+      } catch {
+        // 忽略 JSON 解析错误
+      }
+    }
+    
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+
+      // SSE 消息以 \n\n 分隔，处理完整的消息
+      const messages = buffer.split('\n\n')
+      // 最后一个可能是不完整的，保留在 buffer 中
+      buffer = messages.pop() || ''
+
+      // 处理每个完整的消息
+      for (const message of messages) {
+        const lines = message.split('\n')
+        for (const line of lines) {
+          processLine(line)
+        }
+      }
+    }
+    
+    // 处理剩余的 buffer
+    if (buffer.trim()) {
+      const lines = buffer.split('\n')
+      for (const line of lines) {
+        processLine(line)
+      }
+    }
+  } catch (error) {
+    callbacks.onError(error instanceof Error ? error.message : '流式请求失败')
+  }
+}
+
+export async function renderPDF(
+  resume: Resume,
+  _useDemo: boolean = false,
+  sectionOrder?: string[],
+  signal?: AbortSignal,
+  renderMode: PDFRenderMode = 'local',
+): Promise<Blob> {
+  const traceId = `pdf-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  const mappedOrder = sectionOrder?.map(s => s === 'experience' ? 'internships' : s)
+  console.log('[PDF TRACE][renderPDF:start]', {
+    traceId,
+    renderMode,
+    sectionOrder: mappedOrder,
+    resumeKeys: Object.keys((resume || {}) as any).slice(0, 20),
+  })
+
+  // 使用非流式端点进行简单的PDF渲染
+  const url = getPDFRenderEndpoint('/api/pdf/render', renderMode)
+  try {
+    const { data } = await axios.post(
+      url,
+      { resume, section_order: mappedOrder },
+      {
+        responseType: 'blob',
+        signal,
+        headers: {
+          'X-PDF-Trace-Id': traceId,
+          'X-PDF-Trace-Source': 'api.renderPDF',
+          ...getAuthHeaders(),
+        },
+      }
+    )
+    console.log('[PDF TRACE][renderPDF:done]', { traceId, size: (data as Blob).size })
+    return data as Blob
+  } catch (error: any) {
+    let detail = ''
+    try {
+      const blob = error?.response?.data
+      if (blob instanceof Blob) {
+        const text = await blob.text()
+        detail = parseApiErrorDetail(text)
+      } else if (error?.response?.status === 401) {
+        detail = '请先登录后再下载 PDF'
+      } else if (error?.response?.status === 403) {
+        detail = parseApiErrorDetail(JSON.stringify({ detail: error?.response?.data?.detail })) || 'PDF 下载次数已达上限（10 次）'
+      } else {
+        detail = error?.response?.data?.detail || error?.message || ''
+        if (typeof detail !== 'string') {
+          detail = parseApiErrorDetail(JSON.stringify({ detail }))
+        }
+      }
+    } catch {
+      detail = error?.message || ''
+    }
+    throw new Error(detail || 'PDF 渲染失败')
+  }
+}
+
+/**
+ * 流式渲染PDF，提供实时进度
+ */
+export async function renderPDFStream(
+  resume: Resume,
+  sectionOrder?: string[],
+  onProgress?: (progress: string) => void,
+  onPdf?: (pdfData: ArrayBuffer) => void,
+  onError?: (error: string) => void,
+  context?: {
+    sessionId?: string
+    resumeId?: string
+    traceId?: string
+    source?: string
+    trigger?: string
+    signal?: AbortSignal
+    renderMode?: PDFRenderMode
+  }
+): Promise<Blob> {
+  const traceId = context?.traceId || `pdfs-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  const traceSource = context?.source || 'api.renderPDFStream'
+  const traceTrigger = context?.trigger || 'unknown'
+  const callerStack = new Error().stack?.split('\n').slice(2, 6).join(' <- ')
+
+  console.log('[PDF TRACE][stream:start]', {
+    traceId,
+    traceSource,
+    traceTrigger,
+    renderMode: context?.renderMode || 'local',
+    sessionId: context?.sessionId,
+    resumeId: context?.resumeId,
+    sectionOrder,
+    callerStack,
+  })
+
+  onProgress?.('开始生成PDF...')
+
+  const url = getPDFRenderEndpoint('/api/pdf/render/stream', context?.renderMode || 'local')
+  // 将 experience 映射为 internships（因为数据存在 internships 字段）
+  const mappedOrder = sectionOrder?.map(s => s === 'experience' ? 'internships' : s)
+
+  console.log('[PDF TRACE][stream:request]', {
+    traceId,
+    traceSource,
+    traceTrigger,
+    url,
+    renderMode: context?.renderMode || 'local',
+    sessionId: context?.sessionId,
+    resumeId: context?.resumeId,
+    mappedOrder,
+  })
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-cache',
+      ...(context?.sessionId ? { 'X-Agent-Session-Id': context.sessionId } : {}),
+      ...(context?.resumeId ? { 'X-Agent-Resume-Id': context.resumeId } : {}),
+      'X-PDF-Trace-Id': traceId,
+      'X-PDF-Trace-Source': traceSource,
+      'X-PDF-Trace-Trigger': traceTrigger,
+      ...getAuthHeaders(),
+    },
+    signal: context?.signal,
+    body: JSON.stringify({ resume, section_order: mappedOrder })
+  })
+
+  console.log('[PDF TRACE][stream:response]', {
+    traceId,
+    status: response.status,
+    statusText: response.statusText,
+  })
+
+  if (!response.ok) {
+    const errorText = await response.text()
+    console.error('[PDF TRACE][stream:http-error]', { traceId, errorText })
+    if (response.status === 401) {
+      throw new Error('请先登录后再下载 PDF')
+    }
+    if (response.status === 403) {
+      throw new Error(parseApiErrorDetail(errorText) || 'PDF 下载次数已达上限（10 次）')
+    }
+    throw new Error(parseApiErrorDetail(errorText) || `HTTP error! status: ${response.status}`)
+  }
+
+  const reader = response.body?.getReader()
+  const decoder = new TextDecoder()
+
+  if (!reader) {
+    throw new Error('无法获取响应流')
+  }
+
+  console.log('[PDF TRACE][stream:read-start]', { traceId })
+
+  let buffer = ''
+  let pdfData: Uint8Array | null = null
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+
+    const chunk = decoder.decode(value, { stream: true })
+    console.log('[PDF TRACE][stream:chunk]', { traceId, chunkBytes: chunk.length })
+    buffer += chunk
+
+    // SSE格式：事件之间用双换行符分隔（Windows 后端可能产生 \r\n，先统一）
+    const events = buffer.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n\n')
+    buffer = events.pop() || ''  // 保留最后一个可能不完整的事件
+    console.log('[PDF TRACE][stream:buffer]', { traceId, events: events.length, bufferLen: buffer.length })
+
+    for (const event of events) {
+      // SSE 格式：先解析 event: 行，再解析 data: 行
+      const lines = event.split('\n')
+      let eventType: string | null = null
+      let eventData: string | null = null
+
+      // 先解析 event: 和 data: 行
+      for (const line of lines) {
+        if (line.startsWith('event: ')) {
+          eventType = line.slice(7).trim()
+        } else if (line.startsWith('data: ')) {
+          eventData = line.slice(6).trim()
+        }
+      }
+
+      // 根据事件类型处理数据
+      const parsedEvent = parseSSEBlock(event)
+      eventType = parsedEvent.eventType
+      eventData = parsedEvent.eventData
+
+      if (eventType && eventData !== null) {
+        try {
+          if (eventType === 'progress') {
+            // progress 事件的 data 是纯字符串
+            onProgress?.(eventData)
+          } else if (eventType === 'error') {
+            // error 事件的 data 是纯字符串
+            console.error('[PDF TRACE][stream:event-error]', { traceId, eventData })
+            onError?.(eventData)
+            throw new Error(eventData)
+          } else if (eventType === 'pdf') {
+            // pdf 事件的 data 是十六进制字符串
+            const hexData = eventData.replace(/\s+/g, '')
+            console.log('[PDF TRACE][stream:event-pdf]', { traceId, hexLen: hexData?.length || 0 })
+
+            // 验证hex数据
+            if (!hexData || hexData.length === 0) {
+              console.error('[PDF TRACE][stream:pdf-empty]', { traceId })
+              throw new Error('PDF数据为空')
+            }
+
+            try {
+              // 确保hex字符串长度为偶数
+              const normalizedHex = hexData.length % 2 === 0 ? hexData : '0' + hexData
+              const matches = normalizedHex.match(/.{2}/g)
+              if (!matches) {
+                console.error('[PDF TRACE][stream:pdf-format-invalid]', { traceId })
+                throw new Error('PDF数据格式错误')
+              }
+
+              pdfData = parsePDFHex(hexData, traceId)
+              console.log('[PDF TRACE][stream:pdf-parsed]', { traceId, bytes: pdfData.length })
+            } catch (error) {
+              console.error('[PDF TRACE][stream:pdf-parse-failed]', { traceId, error })
+              throw new Error(`PDF数据转换失败: ${error instanceof Error ? error.message : String(error)}`)
+            }
+          }
+        } catch (e) {
+          // 如果是 error 事件，重新抛出以便上层处理
+          if (eventType === 'error') {
+            throw e
+          }
+          console.error('[PDF TRACE][stream:sse-parse-failed]', { traceId, error: e })
+        }
+      }
+    }
+  }
+
+  // 处理缓冲区中剩余的数据（可能是不完整的最后一个事件）
+  if (buffer && buffer.length > 0) {
+    console.log('[PDF TRACE][stream:tail-buffer]', {
+      traceId,
+      length: buffer.length,
+      preview: buffer.substring(0, 200),
+    })
+
+    // 解析剩余缓冲区中的事件（先统一换行符）
+    const lines = buffer.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n')
+    let eventType: string | null = null
+    let eventData: string | null = null
+
+    for (const line of lines) {
+      if (line.startsWith('event: ')) {
+        eventType = line.slice(7).trim()
+      } else if (line.startsWith('data: ')) {
+        eventData = line.slice(6).trim()
+      }
+    }
+
+    const parsedTailEvent = parseSSEBlock(buffer)
+    eventType = parsedTailEvent.eventType
+    eventData = parsedTailEvent.eventData
+
+    if (eventType === 'error' && eventData) {
+      // 处理错误事件
+      console.error('[PDF TRACE][stream:tail-error]', { traceId, eventData })
+      onError?.(eventData)
+      throw new Error(eventData)
+    } else if (eventType === 'pdf' && eventData) {
+      // 处理PDF事件
+      const hexData = eventData.replace(/\s+/g, '')
+      console.log('[PDF TRACE][stream:tail-pdf]', { traceId, hexLen: hexData.length })
+
+      try {
+        const normalizedHex = hexData.length % 2 === 0 ? hexData : '0' + hexData
+        const matches = normalizedHex.match(/.{2}/g)
+        if (!matches) {
+          console.error('[PDF TRACE][stream:tail-pdf-format-invalid]', { traceId })
+          throw new Error('PDF数据格式错误')
+        }
+
+        pdfData = parsePDFHex(hexData, traceId)
+        console.log('[PDF TRACE][stream:tail-pdf-parsed]', { traceId, bytes: pdfData.length })
+      } catch (error) {
+        console.error('[PDF TRACE][stream:tail-pdf-parse-failed]', { traceId, error })
+        throw new Error(`PDF数据转换失败: ${error instanceof Error ? error.message : String(error)}`)
+      }
+    } else if (eventType === 'progress' && eventData) {
+      // 处理进度事件
+      onProgress?.(eventData)
+    } else {
+      console.log('[PDF TRACE][stream:tail-no-event]', { traceId })
+    }
+  }
+
+  if (!pdfData) {
+    throw new Error('未收到PDF数据')
+  }
+
+  console.log('[PDF TRACE][stream:pdf-ready]', { traceId })
+  onPdf?.(pdfData.buffer as ArrayBuffer)
+
+  // 创建 blob 返回
+  const blob = new Blob([pdfData.buffer as ArrayBuffer], { type: 'application/pdf' })
+  console.log('[PDF TRACE][stream:done]', { traceId, blobSize: blob.size })
+
+  return blob
+}
+
+export async function rewriteResume(provider: 'zhipu' | 'doubao', resume: Resume, path: string, instruction: string) {
+  const url = `${getApiBaseUrl()}/api/resume/rewrite`
+  const { data } = await axios.post(url, { provider, resume, path, instruction })
+  return data as { resume: Resume }
+}
+
+/**
+ * 流式 AI 改写 - 实时显示生成内容
+ */
+export async function rewriteResumeStream(
+  provider: 'zhipu' | 'doubao' | 'deepseek',
+  resume: Resume,
+  path: string,
+  instruction: string,
+  onChunk: (chunk: string) => void,
+  onComplete?: () => void,
+  onError?: (error: string) => void,
+  signal?: AbortSignal,
+  history?: { role: string; content: string }[]
+) {
+  const url = `${getApiBaseUrl()}/api/resume/rewrite/stream`
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ provider, resume, path, instruction, history: history || [] }),
+      signal
+    })
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+    
+    const reader = response.body?.getReader()
+    const decoder = new TextDecoder()
+    
+    if (!reader) {
+      throw new Error('无法获取响应流')
+    }
+    
+    let buffer = ''
+    let streamCompleted = false
+
+    // 处理 SSE 消息
+    const processLine = (line: string) => {
+      if (!line.startsWith('data: ')) return
+
+      const data = line.slice(6).trim()
+      if (data === '[DONE]') {
+        if (!streamCompleted) {
+          streamCompleted = true
+          onComplete?.()
+        }
+        return
+      }
+      
+      try {
+        const parsed = JSON.parse(data)
+        if (parsed.content) {
+          // 立即调用回调，触发 UI 更新
+          onChunk(parsed.content)
+        }
+        if (parsed.error) {
+          onError?.(parsed.error)
+          return
+        }
+      } catch {
+        // 忽略 JSON 解析错误
+      }
+    }
+    
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      
+      buffer += decoder.decode(value, { stream: true })
+      
+      // SSE 消息以 \n\n 分隔，处理完整的消息
+      const messages = buffer.split('\n\n')
+      // 最后一个可能是不完整的，保留在 buffer 中
+      buffer = messages.pop() || ''
+      
+      // 处理每个完整的消息
+      for (const message of messages) {
+        const lines = message.split('\n')
+        for (const line of lines) {
+          processLine(line)
+        }
+      }
+    }
+    
+    // 处理剩余的 buffer
+    if (buffer.trim()) {
+      const lines = buffer.split('\n')
+      for (const line of lines) {
+        processLine(line)
+      }
+    }
+    
+    if (!streamCompleted) {
+      onComplete?.()
+    }
+  } catch (error) {
+    onError?.(error instanceof Error ? error.message : '流式请求失败')
+  }
+}
+
+
+/**
+ * 获取默认简历模板
+ *
+ * 使用前端内嵌的模板，不依赖后端
+ * 用户数据保存在浏览器 localStorage 中
+ */
+export function getDefaultTemplate(): ResumeData {
+  return structuredClone(DEFAULT_RESUME_TEMPLATE)
+}
+
+/**
+ * 编译 LaTeX 源代码为 PDF（流式）
+ * 使用 slager 原版样式，与 slager.link 完全一致
+ */
+export async function compileLatexStream(
+  latexContent: string,
+  onProgress?: (progress: string) => void,
+  onPdf?: (pdfData: ArrayBuffer) => void,
+  onError?: (error: string) => void
+): Promise<Blob> {
+  console.log('[API] 开始编译 LaTeX，内容长度:', latexContent.length)
+  
+  onProgress?.('开始编译 LaTeX...')
+  
+  const url = `${getApiBaseUrl()}/api/pdf/compile-latex/stream`
+  
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-cache',
+      ...getAuthHeaders(),
+    },
+    body: JSON.stringify({ latex_content: latexContent })
+  })
+  
+  if (!response.ok) {
+    const errorText = await response.text()
+    if (response.status === 401) {
+      throw new Error('请先登录后再下载 PDF')
+    }
+    if (response.status === 403) {
+      throw new Error(parseApiErrorDetail(errorText) || 'PDF 下载次数已达上限（10 次）')
+    }
+    throw new Error(parseApiErrorDetail(errorText) || `HTTP error! status: ${response.status}`)
+  }
+  
+  const reader = response.body?.getReader()
+  const decoder = new TextDecoder()
+  
+  if (!reader) {
+    throw new Error('无法获取响应流')
+  }
+  
+  let buffer = ''
+  let pdfData: Uint8Array | null = null
+  
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    
+    const chunk = decoder.decode(value, { stream: true })
+    buffer += chunk
+    
+    const events = buffer.split('\n\n')
+    buffer = events.pop() || ''
+    
+    for (const event of events) {
+      const lines = event.split('\n')
+      let eventType: string | null = null
+      let eventData: string | null = null
+
+      // 先解析 event: 和 data: 行
+      for (const line of lines) {
+        if (line.startsWith('event: ')) {
+          eventType = line.slice(7).trim()
+        } else if (line.startsWith('data: ')) {
+          eventData = line.slice(6).trim()
+        }
+      }
+
+      // 根据事件类型处理数据
+      if (eventType && eventData !== null) {
+        try {
+          if (eventType === 'progress') {
+            // progress 事件的 data 是纯字符串
+            onProgress?.(eventData)
+          } else if (eventType === 'error') {
+            // error 事件的 data 是纯字符串
+            console.error('[API] 收到错误事件:', eventData)
+            onError?.(eventData)
+            throw new Error(eventData)
+          } else if (eventType === 'pdf') {
+            // pdf 事件的 data 是十六进制字符串
+            const hexData = eventData.replace(/\s+/g, '')
+            console.log('[API] 收到 PDF 数据，长度:', hexData?.length || 0)
+            
+            const normalizedHex = hexData.length % 2 === 0 ? hexData : '0' + hexData
+            const matches = normalizedHex.match(/.{2}/g)
+            if (matches) {
+              pdfData = new Uint8Array(matches.map((byte: string) => parseInt(byte, 16)))
+            }
+          }
+        } catch (e) {
+          // 如果是 error 事件，重新抛出以便上层处理
+          if (eventType === 'error') {
+            throw e
+          }
+          console.error('解析 SSE 数据失败:', e)
+        }
+      }
+    }
+  }
+  
+  // 处理剩余缓冲区
+  if (buffer && !pdfData) {
+    const lines = buffer.split('\n')
+    let eventType: string | null = null
+    let eventData: string | null = null
+
+    for (const line of lines) {
+      if (line.startsWith('event: ')) {
+        eventType = line.slice(7).trim()
+      } else if (line.startsWith('data: ')) {
+        eventData = line.slice(6).trim()
+      }
+    }
+
+    if (eventType === 'error' && eventData) {
+      console.error('[API] 收到错误事件:', eventData)
+      onError?.(eventData)
+      throw new Error(eventData)
+    } else if (eventType === 'pdf' && eventData) {
+      const hexData = eventData.replace(/\s+/g, '')
+      const normalizedHex = hexData.length % 2 === 0 ? hexData : '0' + hexData
+      const matches = normalizedHex.match(/.{2}/g)
+      if (matches) {
+        pdfData = new Uint8Array(matches.map((byte: string) => parseInt(byte, 16)))
+      }
+    } else if (eventType === 'progress' && eventData) {
+      onProgress?.(eventData)
+    }
+  }
+  
+  if (!pdfData) {
+    throw new Error('未收到 PDF 数据')
+  }
+  
+  onPdf?.(pdfData.buffer as ArrayBuffer)
+  
+  const blob = new Blob([pdfData.buffer as ArrayBuffer], { type: 'application/pdf' })
+  console.log('[API] LaTeX 编译完成，PDF 大小:', blob.size, '字节')
+
+  return blob
+}
+
+/**
+ * 划词改写流式接口 — 直接对文本片段进行 AI 改写
+ * 不需要完整 resume，只传选中文本 + 指令
+ */
+export async function rewriteTextStream(
+  text: string,
+  instruction: string,
+  path: string,
+  onChunk: (chunk: string) => void,
+  onComplete?: () => void,
+  onError?: (error: string) => void,
+  signal?: AbortSignal,
+) {
+  const url = `${getApiBaseUrl()}/api/resume/rewrite-text/stream`
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        provider: 'deepseek',
+        text,
+        instruction,
+        path,
+        locale: 'zh',
+      }),
+      signal,
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+
+    const reader = response.body?.getReader()
+    const decoder = new TextDecoder()
+
+    if (!reader) {
+      throw new Error('无法获取响应流')
+    }
+
+    let buffer = ''
+
+    const processLine = (line: string) => {
+      if (!line.startsWith('data: ')) return
+
+      const data = line.slice(6).trim()
+      if (data === '[DONE]') {
+        onComplete?.()
+        return
+      }
+
+      try {
+        const parsed = JSON.parse(data)
+        if (parsed.error) {
+          onError?.(parsed.error)
+          return
+        }
+        if (parsed.content) {
+          onChunk(parsed.content)
+        }
+      } catch {
+        // ignore parse errors
+      }
+    }
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+
+      const messages = buffer.split('\n\n')
+      buffer = messages.pop() || ''
+
+      for (const message of messages) {
+        const lines = message.split('\n')
+        for (const line of lines) {
+          processLine(line)
+        }
+      }
+    }
+
+    if (buffer.trim()) {
+      const lines = buffer.split('\n')
+      for (const line of lines) {
+        processLine(line)
+      }
+    }
+
+    onComplete?.()
+  } catch (error) {
+    if ((error as Error).name === 'AbortError') return
+    onError?.(error instanceof Error ? error.message : '划词改写失败')
+  }
+}
+
+export interface ChatStreamMessage {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+/** 轻量简历问答（流式）—— 供右下角悬浮 AI 助手对话窗口使用 */
+export async function chatStream(
+  messages: ChatStreamMessage[],
+  resumeContext: string,
+  onChunk: (chunk: string) => void,
+  onComplete?: () => void,
+  onError?: (error: string) => void,
+  signal?: AbortSignal,
+) {
+  const url = `${getApiBaseUrl()}/api/resume/chat/stream`
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        provider: 'deepseek',
+        messages,
+        resume_context: resumeContext,
+        locale: 'zh',
+      }),
+      signal,
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+
+    const reader = response.body?.getReader()
+    const decoder = new TextDecoder()
+
+    if (!reader) {
+      throw new Error('无法获取响应流')
+    }
+
+    let buffer = ''
+    let completed = false
+    const finish = () => {
+      if (completed) return
+      completed = true
+      onComplete?.()
+    }
+
+    const processLine = (line: string) => {
+      if (!line.startsWith('data: ')) return
+      const data = line.slice(6).trim()
+      if (data === '[DONE]') {
+        finish()
+        return
+      }
+      try {
+        const parsed = JSON.parse(data)
+        if (parsed.error) {
+          onError?.(parsed.error)
+          return
+        }
+        if (parsed.content) {
+          onChunk(parsed.content)
+        }
+      } catch {
+        // ignore parse errors
+      }
+    }
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+
+      const events = buffer.split('\n\n')
+      buffer = events.pop() || ''
+
+      for (const event of events) {
+        for (const line of event.split('\n')) {
+          processLine(line)
+        }
+      }
+    }
+
+    if (buffer.trim()) {
+      for (const line of buffer.split('\n')) {
+        processLine(line)
+      }
+    }
+
+    finish()
+  } catch (error) {
+    if ((error as Error).name === 'AbortError') return
+    onError?.(error instanceof Error ? error.message : '对话失败')
+  }
+}
+
+export type RewriteTextIntent = 'full_bold' | 'selective_bold' | 'remove_bold' | 'list_transform' | 'rewrite'
+
+export async function detectRewriteTextIntent(
+  text: string,
+  instruction: string,
+  path: string,
+): Promise<{ intent: RewriteTextIntent; intents?: RewriteTextIntent[]; confidence: number; source?: string }> {
+  const url = `${getApiBaseUrl()}/api/resume/rewrite-text/intent`
+  const { data } = await axios.post(url, {
+    provider: 'deepseek',
+    text,
+    instruction,
+    path,
+    locale: 'zh',
+  })
+  return data as { intent: RewriteTextIntent; intents?: RewriteTextIntent[]; confidence: number; source?: string }
+}
+
+export type GrammarIssueType = 'grammar' | 'wording' | 'vague' | 'quantify'
+
+export interface GrammarIssue {
+  original: string
+  suggestion: string
+  type: GrammarIssueType
+  severity: 'high' | 'medium' | 'low'
+}
+
+export interface GrammarCheckResult {
+  issues: GrammarIssue[]
+  summary: string
+  score: number | null
+}
+
+/** 单字段语法/表达体检：返回结构化 issues + 评分（非流式） */
+export async function grammarCheckField(text: string, path: string): Promise<GrammarCheckResult> {
+  const url = `${getApiBaseUrl()}/api/resume/grammar-check`
+  const { data } = await axios.post(url, {
+    provider: 'deepseek',
+    text,
+    path,
+    locale: 'zh',
+  })
+  return data as GrammarCheckResult
+}
+
+export interface JdOptimizeField {
+  key: string
+  label: string
+  content: string
+}
+
+export interface JdSuggestion {
+  key: string
+  original: string
+  suggested: string
+  reason: string
+}
+
+export interface JdAtsCheckItem {
+  item: string
+  /** pass=达标 fail=不达标需改 template=由 LaTeX 模板天然保证 */
+  status: 'pass' | 'fail' | 'template'
+  note: string
+}
+
+export interface JdOptimizeResult {
+  matchScore: number | null
+  atsScore: number | null
+  keywordMatches: string[]
+  missingKeywords: string[]
+  atsChecklist?: JdAtsCheckItem[]
+  suggestions: JdSuggestion[]
+}
+
+/** 针对 JD 的多字段优化建议（非流式，结构化） */
+export async function jdOptimize(fields: JdOptimizeField[], jdText: string): Promise<JdOptimizeResult> {
+  const url = `${getApiBaseUrl()}/api/resume/jd-optimize`
+  const { data } = await axios.post(url, {
+    provider: 'deepseek',
+    jd_text: jdText,
+    fields,
+    locale: 'zh',
+  })
+  return data as JdOptimizeResult
+}
+
+export type JdKeywordIntegrateResult =
+  | { integrated: false; keyword: string }
+  | { integrated: true; keyword: string; key: string; original: string; suggested: string; reason: string }
+
+/** 把某个 JD 缺失关键词自然融入最相关的字段，返回可确定性替换的 original/suggested */
+export async function jdIntegrateKeyword(
+  keyword: string,
+  fields: JdOptimizeField[],
+  jdText: string,
+): Promise<JdKeywordIntegrateResult> {
+  const url = `${getApiBaseUrl()}/api/resume/jd-keyword-integrate`
+  const { data } = await axios.post(url, {
+    provider: 'deepseek',
+    keyword,
+    jd_text: jdText,
+    fields,
+    locale: 'zh',
+  })
+  return data as JdKeywordIntegrateResult
+}
+
+export interface TranslationItem {
+  key: string
+  original: string
+  translated: string
+}
+
+export interface TranslateResult {
+  translations: TranslationItem[]
+}
+
+/** 简历多字段翻译：逐字段返回 original/translated（非流式，结构化） */
+export async function translateResume(fields: JdOptimizeField[], targetLang: string): Promise<TranslateResult> {
+  const url = `${getApiBaseUrl()}/api/resume/translate`
+  const { data } = await axios.post(url, {
+    provider: 'deepseek',
+    target_lang: targetLang,
+    fields,
+    locale: 'zh',
+  })
+  return data as TranslateResult
+}
+
+export interface HealthDimension {
+  dimension: string
+  score: number | null
+  comment: string
+}
+
+export interface HealthCheckResult {
+  overallScore: number | null
+  dimensions: HealthDimension[]
+  suggestions: JdSuggestion[]
+  summary: string
+}
+
+/** 通用简历体检（无需 JD）：维度评分 + 逐条可应用建议（非流式，结构化） */
+export async function healthCheck(fields: JdOptimizeField[]): Promise<HealthCheckResult> {
+  const url = `${getApiBaseUrl()}/api/resume/health-check`
+  const { data } = await axios.post(url, {
+    provider: 'deepseek',
+    fields,
+    locale: 'zh',
+  })
+  return data as HealthCheckResult
+}
+
+export const scoreResume = async (resumeId: string, jdText: string): Promise<any> => {
+  const response = await axios.post(`${getApiBaseUrl()}/api/resume/score`, {
+    resume_id: resumeId,
+    jd_text: jdText,
+  }, {
+    headers: {
+      'Content-Type': 'application/json',
+      ...getAuthHeaders(),
+    },
+  })
+  return response.data
+}

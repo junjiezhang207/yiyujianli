@@ -1,0 +1,646 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f5f3ec;
+  --foreground: #18201c;
+  --panel: #fffdf7;
+  --line: #d8d1bf;
+  --muted: #647067;
+  --accent: #0d7a5f;
+  --accent-strong: #095f4a;
+  --ink: #111812;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+.shell {
+  min-height: 100vh;
+  padding: 28px;
+  background:
+    linear-gradient(135deg, rgba(13, 122, 95, 0.14), transparent 34%),
+    linear-gradient(315deg, rgba(210, 83, 53, 0.12), transparent 28%),
+    var(--background);
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  max-width: 1180px;
+  margin: 0 auto 48px;
+}
+
+.brand {
+  font-weight: 800;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.nav-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.nav-link {
+  color: var(--foreground);
+  border: 1px solid var(--line);
+  padding: 10px 14px;
+  text-decoration: none;
+  background: rgba(255, 253, 247, 0.72);
+}
+
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 440px);
+  gap: 48px;
+  align-items: start;
+  max-width: 1180px;
+  margin: 0 auto;
+}
+
+.hero.compact {
+  display: block;
+  max-width: 860px;
+  margin-bottom: 24px;
+}
+
+.hero h1 {
+  max-width: 760px;
+  margin: 0;
+  font-size: clamp(46px, 7vw, 92px);
+  line-height: 0.94;
+  letter-spacing: 0;
+  color: var(--ink);
+}
+
+.hero.compact h1 {
+  font-size: clamp(38px, 5vw, 64px);
+}
+
+.hero p {
+  max-width: 660px;
+  margin: 24px 0 0;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1.7;
+}
+
+.eyebrow {
+  margin: 0 0 12px;
+  color: var(--accent-strong);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.auth-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  border: 1px solid var(--line);
+  background: rgba(255, 253, 247, 0.9);
+  padding: 24px;
+  box-shadow: 0 24px 70px rgba(24, 32, 28, 0.12);
+}
+
+.auth-card h2 {
+  margin: 0;
+  font-size: 28px;
+  line-height: 1.15;
+  color: var(--ink);
+}
+
+.muted {
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.auth-card label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: var(--foreground);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.auth-card input {
+  min-height: 46px;
+  border: 1px solid var(--line);
+  background: #ffffff;
+  padding: 0 12px;
+  color: var(--ink);
+  outline: none;
+}
+
+.auth-card input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(13, 122, 95, 0.16);
+}
+
+.primary-button,
+.google-button,
+.secondary-button,
+.link-button {
+  min-height: 46px;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+
+.continue-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+
+.primary-button,
+.google-button {
+  background: var(--accent);
+  color: white;
+  font-weight: 800;
+}
+
+.google-button {
+  background: var(--ink);
+}
+
+.secondary-button {
+  border-color: var(--line);
+  background: white;
+  color: var(--ink);
+  font-weight: 800;
+}
+
+.link-button {
+  background: transparent;
+  color: var(--accent-strong);
+  font-weight: 800;
+}
+
+.primary-button:disabled,
+.google-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.divider::before,
+.divider::after {
+  content: "";
+  height: 1px;
+  flex: 1;
+  background: var(--line);
+}
+
+.status-message {
+  margin: 0;
+  color: var(--accent-strong);
+  font-weight: 700;
+}
+
+.account-grid {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 10px 14px;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  padding: 16px 0;
+}
+
+.account-grid span {
+  color: var(--muted);
+}
+
+.account-grid strong {
+  overflow-wrap: anywhere;
+}
+
+.account-grid.compact {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.account-shell {
+  display: grid;
+  gap: 16px;
+  max-width: 860px;
+  margin: 0 auto;
+}
+
+.account-profile-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.account-avatar {
+  width: 72px;
+  height: 72px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  object-fit: cover;
+}
+
+.account-avatar-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--ink);
+  color: white;
+  font-size: 28px;
+  font-weight: 800;
+}
+
+.account-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.usage-meter {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.usage-meter-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--muted);
+}
+
+.usage-meter-track {
+  height: 10px;
+  background: rgba(17, 24, 18, 0.08);
+  border: 1px solid var(--line);
+}
+
+.usage-meter-fill {
+  height: 100%;
+  background: var(--accent);
+}
+
+.system-map {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  max-width: 1180px;
+  margin: 52px auto 0;
+}
+
+.system-map div {
+  border-top: 1px solid var(--line);
+  padding-top: 18px;
+}
+
+.system-map span {
+  color: var(--accent-strong);
+  font-weight: 900;
+}
+
+.system-map h2 {
+  margin: 12px 0 8px;
+  color: var(--ink);
+}
+
+.system-map p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+@media (max-width: 860px) {
+  .shell {
+    padding: 20px;
+  }
+
+  .topbar,
+  .hero,
+  .system-map {
+    grid-template-columns: 1fr;
+  }
+
+  .topbar {
+    align-items: flex-start;
+    margin-bottom: 34px;
+  }
+
+  .hero {
+    gap: 28px;
+  }
+
+  .hero h1 {
+    font-size: 48px;
+  }
+
+  .system-map {
+    margin-top: 36px;
+  }
+}
+
+/* ============================================================
+   登录界面（未登录态）— 对齐 Resume.AI 蓝色品牌，聚焦居中卡片。
+   全部作用域限定在 .auth-screen 之下，账户面板与首页沿用原有样式。
+   ============================================================ */
+.auth-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  min-height: 100dvh;
+  padding: 24px;
+  background:
+    radial-gradient(58% 48% at 50% 0%, rgba(37, 99, 235, 0.1), transparent 70%),
+    radial-gradient(42% 42% at 100% 100%, rgba(59, 130, 246, 0.08), transparent 72%),
+    #f7f9fc;
+}
+
+.auth-screen .login-card {
+  width: 100%;
+  max-width: 420px;
+  gap: 0;
+  border: 1px solid #e7ecf3;
+  border-radius: 20px;
+  background: #ffffff;
+  padding: 36px 32px 28px;
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 24px 60px -22px rgba(37, 99, 235, 0.22);
+  animation: login-rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes login-rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.auth-screen .login-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 26px;
+}
+
+.auth-screen .login-logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #2563eb, #3b82f6);
+  color: #ffffff;
+  font-weight: 900;
+  font-style: italic;
+  font-size: 13px;
+  letter-spacing: -0.02em;
+  box-shadow: 0 4px 12px -2px rgba(37, 99, 235, 0.5);
+}
+
+.auth-screen .login-wordmark {
+  font-weight: 800;
+  font-size: 17px;
+  letter-spacing: -0.01em;
+  color: #0f172a;
+}
+
+.auth-screen .login-head {
+  margin-bottom: 22px;
+}
+
+.auth-screen .login-head h2 {
+  margin: 0 0 6px;
+  font-size: 26px;
+  line-height: 1.2;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: #0f172a;
+}
+
+.auth-screen .login-head .muted {
+  margin: 0;
+  font-size: 14.5px;
+  color: #64748b;
+}
+
+/* Google 按钮：白底 + 描边 + 真实四色 G */
+.auth-screen .google-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  border: 1px solid #dbe2ea;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #1f2937;
+  font-weight: 700;
+  font-size: 15px;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.06s ease;
+}
+
+.auth-screen .google-button:hover:not(:disabled) {
+  background: #f8fafc;
+  border-color: #c5d0dd;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+}
+
+.auth-screen .google-button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.auth-screen .google-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.auth-screen .google-button svg {
+  flex-shrink: 0;
+}
+
+/* 分割线 */
+.auth-screen .divider {
+  margin: 18px 0;
+  font-size: 12.5px;
+  color: #94a3b8;
+}
+
+.auth-screen .divider::before,
+.auth-screen .divider::after {
+  background: #e7ecf3;
+}
+
+/* 表单输入 */
+.auth-screen .login-card label {
+  gap: 7px;
+  margin-bottom: 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
+}
+
+.auth-screen .login-card input {
+  min-height: 46px;
+  border: 1px solid #dbe2ea;
+  border-radius: 11px;
+  background: #ffffff;
+  padding: 0 14px;
+  font-size: 14.5px;
+  color: #0f172a;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.auth-screen .login-card input::placeholder {
+  color: #9aa6b4;
+}
+
+.auth-screen .login-card input:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3.5px rgba(59, 130, 246, 0.15);
+}
+
+/* 主按钮：品牌蓝 */
+.auth-screen .primary-button {
+  min-height: 48px;
+  margin-top: 2px;
+  border-radius: 12px;
+  background: #2563eb;
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 15px;
+  box-shadow: 0 8px 20px -8px rgba(37, 99, 235, 0.6);
+  transition:
+    background 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.06s ease;
+}
+
+.auth-screen .primary-button:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
+.auth-screen .primary-button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.auth-screen .primary-button:disabled {
+  opacity: 0.5;
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+/* 文字链接 */
+.auth-screen .link-button {
+  min-height: auto;
+  margin-top: 16px;
+  background: transparent;
+  color: #2563eb;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.auth-screen .link-button:hover {
+  color: #1d4ed8;
+  text-decoration: underline;
+}
+
+.auth-screen .status-message {
+  margin-top: 10px;
+  font-size: 13.5px;
+  text-align: center;
+  color: #2563eb;
+}
+
+/* 返回首页 */
+.auth-screen-home {
+  color: #64748b;
+  font-size: 13.5px;
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.auth-screen-home:hover {
+  color: #2563eb;
+}
+
+/* 会话检查中的加载态 */
+.auth-screen .login-pending {
+  align-items: center;
+  gap: 14px;
+  padding: 44px 32px;
+}
+
+.auth-screen .login-spinner {
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  border: 3px solid rgba(37, 99, 235, 0.18);
+  border-top-color: #2563eb;
+  animation: login-spin 0.7s linear infinite;
+}
+
+@keyframes login-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-screen .login-card {
+    animation: none;
+  }
+  .auth-screen .login-spinner {
+    animation-duration: 1.4s;
+  }
+}
+
+@media (max-width: 480px) {
+  .auth-screen .login-card {
+    padding: 28px 22px 24px;
+    border-radius: 18px;
+  }
+  .auth-screen .login-head h2 {
+    font-size: 23px;
+  }
+}

@@ -1,0 +1,297 @@
+import { useCallback, useEffect, useRef } from "react";
+import type { SSEEvent } from "@/transports/SSETransport";
+import { extractResumeEditDiff } from "@/utils/resumePatch";
+import { isAgentStructuredEventEnabled } from "@/lib/runtimeEnv";
+import { isResumeDiagnosisStructuredData } from "@/types/resumeDiagnosis";
+import { classifyStructuredToolPresentation } from "@/utils/toolPresentation";
+
+interface UseToolEventRouterParams<TSearch, TResume, TEdit, TDiagnosis, TStructured> {
+  runId: number;
+  onDone: () => void;
+  onError: (message: string) => void;
+  onShowResumeSelector: () => void;
+  onResumeUpdated: (resumeData: Record<string, unknown>) => void;
+  upsertSearchResult: (messageId: string, data: TSearch) => void;
+  upsertLoadedResume: (messageId: string, data: TResume) => void;
+  upsertResumeEditDiff: (messageId: string, data: TEdit) => void;
+  upsertDiagnosisToolEvent: (messageId: string, data: TDiagnosis) => void;
+  upsertStructuredEvent: (messageId: string, data: TStructured) => void;
+  applyResumeEditDiff: (data: TEdit) => void;
+}
+
+function extractDiffFromText(raw: unknown): { before: string; after: string } | null {
+  return extractResumeEditDiff(String(raw || ""));
+}
+
+export function useToolEventRouter<
+  TSearch extends { type?: string; results?: unknown[]; metadata?: any; total_results?: number; query?: string },
+  TResume extends { type?: string },
+  TEdit extends { type?: string },
+  TDiagnosis extends { type?: string },
+  TStructured extends { type?: string },
+>(params: UseToolEventRouterParams<TSearch, TResume, TEdit, TDiagnosis, TStructured>) {
+  const {
+    runId,
+    onDone,
+    onError,
+    onShowResumeSelector,
+    onResumeUpdated,
+    upsertSearchResult,
+    upsertLoadedResume,
+    upsertResumeEditDiff,
+    upsertDiagnosisToolEvent,
+    upsertStructuredEvent,
+    applyResumeEditDiff,
+  } = params;
+
+  const handledResumeSelectorKeysRef = useRef<Set<string>>(new Set());
+  const handledEditKeysRef = useRef<Set<string>>(new Set());
+  const handledDiagnosisKeysRef = useRef<Set<string>>(new Set());
+  const handledStructuredKeysRef = useRef<Set<string>>(new Set());
+  const pendingEditDiffRef = useRef<TEdit | null>(null);
+  const pendingShowResumeRef = useRef(false);
+
+  useEffect(() => {
+    handledResumeSelectorKeysRef.current.clear();
+    handledEditKeysRef.current.clear();
+    handledDiagnosisKeysRef.current.clear();
+    handledStructuredKeysRef.current.clear();
+    pendingEditDiffRef.current = null;
+    pendingShowResumeRef.current = false;
+  }, [runId]);
+
+  const handleSSEEvent = useCallback(
+    (event: SSEEvent) => {
+      // resume_updated: 后端在 cv_editor_agent 成功后推送完整简历 JSON。
+      // 前端直接替换本地状态，无需 re-apply diff。
+      if (event.type === "resume_updated") {
+        const resumeData = (event as any).data?.resume_data ?? (event as any).resume_data;
+        if (resumeData && typeof resumeData === "object") {
+          onResumeUpdated(resumeData as Record<string, unknown>);
+        }
+        return;
+      }
+
+      if (event.type === "done") {
+        // diff 卡片延迟到 done 后挂载（仅当没有 resume_updated 时才 fallback apply）
+        if (pendingEditDiffRef.current) {
+          upsertResumeEditDiff("current", pendingEditDiffRef.current);
+          applyResumeEditDiff(pendingEditDiffRef.current);
+          pendingEditDiffRef.current = null;
+        }
+        onDone();
+        if (pendingShowResumeRef.current) {
+          pendingShowResumeRef.current = false;
+          window.setTimeout(() => {
+            onShowResumeSelector();
+          }, 0);
+        }
+        return;
+      }
+
+      if (event.type === "error") {
+        const message =
+          event.data?.content ||
+          event.data?.error_details ||
+          "流式请求失败，请稍后重试。";
+        onError(String(message));
+        return;
+      }
+
+      if (event.type !== "tool_result") return;
+
+      const toolName = event.data?.tool;
+      const structured = event.data?.structured_data;
+
+      // 调试日志：记录所有工具调用
+      console.log("[ToolEventRouter] Tool call received:", {
+        toolName,
+        eventType: event.type,
+        hasStructured: !!structured,
+        hasResult: !!event.data?.result,
+        hasContent: !!event.data?.content,
+        eventId: event.id,
+      });
+      const keySeed =
+        event.id ||
+        event.data?.tool_call_id ||
+        `${toolName || "unknown"}:${String(event.data?.content || "")}`;
+      const dedupeKey = `${runId}:${keySeed}`;
+
+      // show_resume 是"工具名驱动"的效果（只弹选择面板，不渲染任何卡片），
+      // 必须在 structured/classify 各早退之前处理：其 structured
+      // （resume_selector/resume）已归 process_only 或不消费，若放在
+      // classify 早退之后会被吞掉、面板永远弹不出——2026-07-15 实际发生
+      // 过一次（8de17bd3 回归，见 reviews/2026-07-15-选择面板不弹-C修复回归.md）。
+      if (toolName === "show_resume") {
+        if (!handledResumeSelectorKeysRef.current.has(dedupeKey)) {
+          handledResumeSelectorKeysRef.current.add(dedupeKey);
+          pendingShowResumeRef.current = true;
+        }
+        return;
+      }
+
+      if (!structured || typeof structured !== "object") return;
+
+      // Asking 模式默认关闭：即使旧后端或历史事件仍发出 ask_question，
+      // 也不把它写入当前 UI 状态。卡片组件和路由代码完整保留供后续灰度。
+      if (
+        typeof (structured as any).type === "string" &&
+        !isAgentStructuredEventEnabled((structured as any).type)
+      ) {
+        return;
+      }
+
+      // 工具执行过程统一由 AgentProcessTimeline 展示。列表查询没有额外业务
+      // 产物，不能再进入 StructuredCardRegistry 形成第二张深色成功卡。
+      const structuredType = String((structured as any).type || "");
+      if (classifyStructuredToolPresentation(structuredType) === "process_only") {
+        return;
+      }
+
+      // 注:get_resume_detail 工具名已从本分支移除(Codex review P0)——它是
+      // 主动读简历链路的新工具,structured type=resume_loaded 走通用注册表
+      // (节点卡+右侧展开);此处按 type 匹配仍兜住老的 resume_detail 数据。
+      if (
+        toolName === "resume-diagnosis" ||
+        (structured as any).type === "resume_detail" ||
+        (structured as any).type === "resume_diagnosis"
+      ) {
+        if (
+          (structured as any).type === "resume_diagnosis" &&
+          !isResumeDiagnosisStructuredData(structured)
+        ) {
+          console.warn("[ToolEventRouter] Invalid resume_diagnosis payload ignored");
+          return;
+        }
+        if (handledDiagnosisKeysRef.current.has(dedupeKey)) {
+          return;
+        }
+        handledDiagnosisKeysRef.current.add(dedupeKey);
+        upsertDiagnosisToolEvent("current", structured as TDiagnosis);
+        return;
+      }
+
+      // 通用结构化事件:有专属分支的老工具之外,任何带 type 的 structured 一律
+      // 进注册表管线(StructuredCardRegistry 按 type 渲染,未知 type 走兜底卡)。
+      // 新工具/新卡片零路由改动。
+      const LEGACY_ROUTED_TOOLS = new Set([
+        "web_search", "show_resume", "CVReader", "cv_reader",
+        "cv_editor_agent", "resume-diagnosis",
+        // generate_resume 走独立的 resume_generated SSE 事件,tool_result 里的
+        // 同名 structured 不进通用管线,避免双渲染
+        "generate_resume",
+        // list_resumes 已在上方归为 process_only；get_resume_detail 仍需进入
+        // callback 完成右侧简历加载，但不会持久化为重复卡片。
+      ]);
+      if (
+        !LEGACY_ROUTED_TOOLS.has(String(toolName)) &&
+        typeof (structured as any).type === "string"
+      ) {
+        if (handledStructuredKeysRef.current.has(dedupeKey)) {
+          return;
+        }
+        handledStructuredKeysRef.current.add(dedupeKey);
+        upsertStructuredEvent("current", structured as TStructured);
+        return;
+      }
+
+      if (toolName === "web_search") {
+        const normalized = {
+          type: "search",
+          query: structured.query || "",
+          results: Array.isArray(structured.results) ? structured.results : [],
+          total_results:
+            structured.total_results ??
+            structured.metadata?.total_results ??
+            (Array.isArray(structured.results) ? structured.results.length : 0),
+          metadata: structured.metadata || {},
+        } as TSearch;
+        upsertSearchResult("current", normalized);
+        return;
+      }
+
+      if (toolName === "CVReader" || toolName === "cv_reader") {
+        // 处理简历读取工具的结果
+        console.log("[CVReader] Processing CVReader tool result:", {
+          hasStructured: !!structured,
+          structured,
+          result: event.data?.result,
+          content: event.data?.content,
+        });
+
+        if (handledEditKeysRef.current.has(dedupeKey)) {
+          console.log("[CVReader] Duplicate key, skipping:", dedupeKey);
+          return;
+        }
+        handledEditKeysRef.current.add(dedupeKey);
+
+        // 将读取的简历数据传递给前端
+        // resume_data 字段与 upsertLoadedResume(payload.resume_data) 对齐
+        const resumePayload = {
+          type: "resume_data",
+          resume_data: structured || event.data?.result || event.data?.content,
+        } as TResume;
+        upsertLoadedResume("current", resumePayload);
+
+        console.log("[CVReader] Resume data loaded and upserted");
+        return;
+      }
+
+      if (toolName === "cv_editor_agent") {
+        console.log("[cv_editor_agent] Processing edit request:", {
+          hasStructured: !!structured,
+          structured,
+          result: event.data?.result,
+          content: event.data?.content,
+        });
+
+        const editPayload = structured as TEdit;
+        const hasDiffShape =
+          typeof (editPayload as any)?.before === "string" &&
+          typeof (editPayload as any)?.after === "string";
+
+        if ((editPayload as any).type === "resume_edit_diff" || hasDiffShape) {
+          if (handledEditKeysRef.current.has(dedupeKey)) {
+            console.log("[cv_editor_agent] Duplicate key, skipping:", dedupeKey);
+            return;
+          }
+          handledEditKeysRef.current.add(dedupeKey);
+          pendingEditDiffRef.current = editPayload;
+          console.log("[cv_editor_agent] Edit diff queued for application");
+          return;
+        }
+
+        // 部分后端分支不会返回 structured_data，仅把 diff 放在 result 文本里。
+        const parsedDiff = extractDiffFromText(event.data?.result || event.data?.content);
+        if (parsedDiff) {
+          if (handledEditKeysRef.current.has(dedupeKey)) {
+            console.log("[cv_editor_agent] Duplicate parsed diff, skipping:", dedupeKey);
+            return;
+          }
+          handledEditKeysRef.current.add(dedupeKey);
+          pendingEditDiffRef.current = parsedDiff as TEdit;
+          console.log("[cv_editor_agent] Parsed edit diff queued");
+          return;
+        }
+
+        console.warn("[cv_editor_agent] No valid diff data found in tool result");
+      }
+    },
+    [
+      runId,
+      onDone,
+      onError,
+      onShowResumeSelector,
+      onResumeUpdated,
+      upsertSearchResult,
+      upsertLoadedResume,
+      upsertResumeEditDiff,
+      applyResumeEditDiff,
+      upsertDiagnosisToolEvent,
+      upsertStructuredEvent,
+    ],
+  );
+
+  return { handleSSEEvent };
+}

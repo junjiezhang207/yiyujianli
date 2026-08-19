@@ -1,0 +1,181 @@
+﻿# Python
+__pycache__/
+*.py[cod]
+*.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+
+# Node
+node_modules/
+dist/
+build/
+.vite/
+.next/
+web/.next/
+out/
+
+# CodeGraph 绱㈠紩浜х墿锛堟湰鍦颁唬鐮佸浘璋憋紝涓嶆彁浜わ級
+.codegraph/
+
+# Environment
+.env
+.env.local
+.env.remote
+.env.production
+frontend/.env.local
+frontend/.env.remote
+frontend/.env.production
+!.env.example
+!frontend/.env.example
+
+# IDE 鈥?鏁寸洰褰曚笉鎻愪氦锛堝惈 tasks.json銆乻ettings.json 绛夛級
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+logs/
+
+# Temporary
+*.tmp
+*.temp
+/tmp/
+*.pid
+*.pdf
+!Latex\ 绠€鍘嗘紨绀?*.pdf
+!瀛樻斁\ PDF/*.pdf
+
+# LaTeX
+*.aux
+*.log
+*.out
+*.synctex.gz
+*.fdb_latexmk
+*.fls
+.pydeps/
+backend/.venv/
+magic-resume-reference/
+wy.json
+wy-TEST.json
+wy.tex
+wy.txt
+/simple.py
+stop.sh
+payload.json
+test_api.sh
+# 蹇界暐鑴氭湰鏂囦欢锛屼絾淇濈暀閮ㄧ讲鑴氭湰
+*.sh
+!deploy.sh
+!railway-start.sh
+!scripts/export_agent_core.sh
+!scripts/check-auth-stack-env.sh
+!scripts/bootstrap-auth-env.sh
+!scripts/migrate-better-auth-db.sh
+!scripts/dev-auth-web.sh
+!scripts/smoke-auth-stack.sh
+
+# browser-fast 鑴氭湰(渚濊禆宸茬Щ闄ょ殑 DOMShell,鏈湴淇濈暀)
+scripts/browser-fast*.sh
+scripts/browser-resume-flow.py
+
+
+
+# 娴嬭瘯鐩綍
+娴嬭瘯娴嬭瘯/
+娴嬭瘯鏍锋湰/
+.Awytests/
+.logs/
+
+# 鍙傝€冪洰褰?reference/projects/
+knowledge/
+
+# knowledge-base 鏁寸洰褰曞彧鐣欐湰鍦颁笉鍏ュ簱锛堣璁℃枃妗?review 杩佺Щ鍒?internal 浠撳簱缁存姢锛?knowledge-base/
+
+# 鍚湇鍔″櫒 IP / 鏁版嵁搴撳湴鍧€鐨勮繍缁存枃妗ｏ紝鍙暀鏈湴涓嶅叆搴擄紙宸插惈鍦ㄤ笂涓€鏉★紝淇濈暀浠ラ槻椤哄簭鍙樺寲锛?knowledge-base/specs/2026-07-09-鍩熷悕杩佺Щresumegenkk-to-cococv.md
+
+# 椋炰功鍓棌绛夋湰鍦板伐鍏风洰褰?feishu-clipper/
+
+# 鏂囨。鐩綍锛圓I 宸ュ叿閰嶇疆 + 鍐呴儴鏋舵瀯鏂囨。锛泂ymlink 鈫?internal锛?docs
+docs/
+
+# Local-only files
+config/
+image.png
+.cursor/mcp.json
+backend/agent/tool/feishu_remote_mcp.py
+backend/scripts/ocr_image_zhipu.py
+images/
+
+# 鏈湴 / 璋冭瘯浜х墿锛屼笉鍏ュ簱锛坧laywright 璋冭瘯蹇収銆佽繍琛屾椂瀵硅瘽鏁版嵁銆丆laude Code 鏈湴璁剧疆锛?.playwright-mcp/
+data/conversations/
+.claude/settings.local.json
+
+# 鏈湴杩愮淮鏂囨。锛堝惈鏈嶅姟鍣ㄨ繛鎺ヤ俊鎭級锛屼笉鍏ュ簱
+*.local.md
+.playwright-mcp/shots/
+
+# ============ 瀹夊叏涓庨殣绉侊紙2026-07-11 瀹夊叏瀹¤锛?===========
+# 浠ヤ笅鐩綍鍚瘑閽?鐢ㄦ埛鏁版嵁/鏈嶅姟鍣ㄤ俊鎭?AI绉佹湁閰嶇疆/涓汉鍐呭锛屼竴寰嬩笉鍏ュ簱銆?# 鏈湴淇濈暀銆佽繙绋嬬Щ闄ゃ€傚巻鍙叉竻鐞嗗緟鍗曠嫭澶勭悊銆?
+# --- 鏁忔劅鍑嵁 / 浠ょ墝 ---
+.browser-fast/
+*.env.secret
+*.secret
+
+# --- 鐪熷疄鐢ㄦ埛鏁版嵁锛堝璇濊褰曘€佷笂浼犲唴瀹圭瓑锛?--
+backend/data/conversations/
+
+# --- 鏈嶅姟鍣ㄨ繙绋嬪伐鍏凤紙鍚?SSH 杩炴帴淇℃伅锛泂ymlink 鈫?internal锛?--
+remote
+remote/
+
+# --- AI 缂栫爜宸ュ叿绉佹湁閰嶇疆锛坰kills/prompts/鍋忓ソ锛泂ymlink 鈫?internal锛?--
+.agents
+.agents/
+.claude
+.claude/
+.cursor
+.cursor/
+.zcode/
+
+# --- IDE 鑷姩鐢熸垚鐨?wiki / 绱㈠紩 ---
+.qoder/
+
+# --- 涓庝骇鍝佹棤鍏崇殑涓汉鍐呭 ---
+LeetCode/
+
+# --- 鍐呴儴娴嬭瘯宸ュ叿锛堥潪寮€婧愬唴瀹癸級---
+agent-harness/
+
+# --- AI 宸ュ叿瑙勫垯鏂囦欢锛圕ursor / Codex / Claude / ZCode 瑙勫垯 + skills 閿侊級---
+.cursorrules
+CODEX.md
+CLAUDE.md
+AGENTS.md
+skills-lock.json
+
+# --- 棰嗗煙鏈琛紙鍐呴儴鏂囨。锛屽惈浠ｇ爜鏋舵瀯閿氱偣锛?--
+CONTEXT.md
+
+# --- 绔炲搧璋冪爺鏂囨。锛堝惈浜у搧璁捐/璋冪爺璁板綍锛?--
+reference/
+
+# Recovery workspace created during local restore; keep locally, never upload.
+.uv-cache/
+_restore_work/
+_recovery_from_chrome_cache/
+_recovery_backend_openapi.json

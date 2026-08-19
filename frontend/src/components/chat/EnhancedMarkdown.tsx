@@ -1,0 +1,282 @@
+/**
+ * EnhancedMarkdown 组件 - 增强的 Markdown 渲染
+ *
+ * 支持：
+ * - 代码高亮
+ * - 表格
+ * - 链接
+ * - 列表
+ * - 引用
+ */
+
+import { Check, Copy } from 'lucide-react';
+import React, { useState } from 'react';
+import ReactMarkdown from 'react-markdown';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import MermaidBlock from './MermaidBlock';
+import { SHARED_REMARK_PLUGINS } from './markdownConfig';
+
+/**
+ * 自定义代码渲染器类型
+ */
+export type CustomCodeRenderer = (code: string) => React.ReactNode;
+
+/**
+ * CodeBlock 组件 - 优化的代码块显示组件
+ *
+ * 特性：
+ * - 现代卡片样式（参考常见聊天界面）
+ * - 右上角复制按钮（绝对定位）
+ * - 语言标识在左上角
+ * - 复制图标和状态反馈
+ */
+interface CodeBlockProps {
+  code: string;
+  language: string;
+}
+
+function CodeBlock({ code, language }: CodeBlockProps) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    if (typeof navigator === 'undefined') return;
+    if (!navigator.clipboard?.writeText) return;
+
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (error) {
+      console.error('Failed to copy code:', error);
+    }
+  };
+
+  return (
+    <div className="not-prose relative mb-4 group">
+      {/* 代码块容器 - 现代卡片样式 */}
+      <div className="relative overflow-hidden rounded-lg border border-gray-300 bg-gray-100 shadow-sm">
+        {/* 语言标识 - 左上角 */}
+        <div className="absolute top-0 left-0 z-10 px-3 py-2">
+          <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wide">
+            {language}
+          </span>
+        </div>
+
+        {/* 复制按钮 - 右上角（参考 ChatGPT 样式） */}
+        <button
+          type="button"
+          onClick={handleCopy}
+          className="absolute top-2 right-2 z-10 flex items-center gap-1.5 px-2.5 py-1.5
+                     text-[11px] font-medium text-gray-700
+                     bg-white
+                     border border-gray-300
+                     rounded-md
+                     hover:bg-gray-50
+                     hover:text-gray-900
+                     hover:border-gray-400
+                     transition-all duration-200"
+          title="复制代码"
+        >
+          {copied ? (
+            <>
+              <Check className="w-3.5 h-3.5 text-green-400" />
+              <span className="text-green-400">已复制</span>
+            </>
+          ) : (
+            <>
+              <Copy className="w-3.5 h-3.5" />
+              <span>复制</span>
+            </>
+          )}
+        </button>
+
+        {/* 代码内容区域 */}
+        <div className="pt-8 pb-4">
+          <SyntaxHighlighter
+            language={language}
+            style={oneLight}
+            PreTag="div"
+            customStyle={{
+              margin: 0,
+              padding: '0 1rem',
+              backgroundColor: 'transparent',
+              color: '#111827',
+              fontSize: '15px',
+              lineHeight: '1.6',
+            }}
+            codeTagProps={{
+              style: {
+                fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
+              },
+            }}
+          >
+            {code}
+          </SyntaxHighlighter>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * EnhancedMarkdown 组件的 Props
+ */
+export interface EnhancedMarkdownProps {
+  /** Markdown 文本内容 */
+  children: string;
+  /** CSS 类名 */
+  className?: string;
+  /** 自定义代码渲染器 */
+  customCodeRenderers?: Record<string, CustomCodeRenderer>;
+}
+
+/**
+ * EnhancedMarkdown 组件 - 增强的 Markdown 渲染组件
+ *
+ * 支持代码高亮、表格、链接、列表、引用、Mermaid 图表等 Markdown 功能
+ *
+ * @param props - 组件属性
+ * @returns React 组件
+ *
+ * @example
+ * ```tsx
+ * <EnhancedMarkdown>
+ *   # Hello World
+ *   ```python
+ *   print("Hello")
+ *   ```
+ *   ```mermaid
+ *   graph TD; A-->B
+ *   ```
+ * </EnhancedMarkdown>
+ * ```
+ */
+export default function EnhancedMarkdown({
+  children,
+  className = '',
+  customCodeRenderers = {},
+}: EnhancedMarkdownProps) {
+  // 确保 children 是字符串类型
+  const rawContent = typeof children === 'string' ? children : String(children || '')
+
+  // Normalize compact ordered lists so remarkBreaks doesn't break them.
+  // "1. foo\n2.bar" → "1. foo\n\n2. bar", "2.text" → "2. text"
+  const content = rawContent
+    .replace(/([^\n])\n(\d+\.\s)/g, '$1\n\n$2')
+    .replace(/^(\d+\.)([^\s])/gm, '$1 $2')
+  
+  // 如果内容为空，返回空 div
+  if (!content.trim()) {
+    return <div className={className} />
+  }
+  
+  return (
+    <div>
+      <div
+        className={`prose prose-base max-w-none
+          prose-headings:text-chat-ink prose-headings:font-bold prose-headings:mt-4 prose-headings:mb-2
+          prose-h1:text-xl prose-h2:text-lg prose-h3:text-base
+          prose-p:text-chat-ink prose-p:leading-[1.7] prose-p:mb-2 prose-p:text-[16px]
+          prose-strong:text-chat-ink prose-strong:font-semibold
+          prose-ul:list-disc prose-ul:ml-4 prose-ul:mb-2 prose-ul:text-[16px] prose-ul:space-y-0.5
+          prose-ol:list-decimal prose-ol:ml-4 prose-ol:mb-2 prose-ol:text-[16px] prose-ol:space-y-0.5
+          prose-li:text-chat-ink/90 prose-li:mb-1
+          prose-hr:my-2 prose-hr:border-chat-border/40
+          prose-code:text-[16px] prose-code:bg-chat-canvas prose-code:px-1 prose-code:py-0.5 prose-code:rounded
+          prose-blockquote:border-l-4 prose-blockquote:border-chat-accent/40 prose-blockquote:pl-3 prose-blockquote:italic prose-blockquote:text-[16px]
+          prose-a:text-chat-accent-deep prose-a:underline hover:prose-a:text-chat-accent
+          prose-table:border-collapse prose-table:border prose-table:border-chat-border prose-table:text-[16px]
+          prose-th:border prose-th:border-chat-border prose-th:px-2 prose-th:py-1 prose-th:bg-chat-canvas
+          prose-td:border prose-td:border-chat-border prose-td:px-2 prose-td:py-1 ${className}`}
+      >
+        <ReactMarkdown
+          remarkPlugins={SHARED_REMARK_PLUGINS}
+          key={content.substring(0, 100)} // 添加 key 避免 React 警告
+          components={{
+          a: ({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { href?: string }) => (
+            <a
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 underline decoration-blue-600/40 underline-offset-2 hover:text-blue-700 break-all"
+              {...props}
+            >
+              {children}
+            </a>
+          ),
+          // 自定义段落样式
+          p: ({ node, children, ...props }: any) => {
+            const text = String(children);
+            // 处理特殊占位符
+            if (text.includes('summary') || text.includes('keywords') || text.match(/^[a-z_]+$/)) {
+              return (
+                <div className="bg-gray-100 border border-gray-300 rounded px-3 py-2 my-2 inline-block">
+                  <code className="text-gray-600 text-[16px]">{text}</code>
+                </div>
+              );
+            }
+            return <p {...props}>{children}</p>;
+          },
+          // 代码块样式（支持语法高亮、Mermaid、自定义渲染器）
+          pre: ({ children, ...props }: any) => {
+            const codeElement = React.Children.toArray(children)[0] as any;
+            if (codeElement?.type === 'code') {
+              const { className, children: codeChildren } = codeElement.props;
+              const match = /language-(\w+)/.exec(className || '');
+              const language = match ? match[1] : 'text';
+              const code = String(codeChildren).replace(/\n$/, '');
+
+              // Mermaid 图表支持
+              if (language === 'mermaid') {
+                return <MermaidBlock code={code} className="mb-4" />;
+              }
+
+              // 自定义代码渲染器
+              if (language === 'component' && customCodeRenderers[language]) {
+                return <>{customCodeRenderers[language](code)}</>;
+              }
+
+              // 其他自定义渲染器
+              if (customCodeRenderers[language]) {
+                return <>{customCodeRenderers[language](code)}</>;
+              }
+
+              // 默认代码高亮 - 使用 CodeBlock 组件
+              return <CodeBlock code={code} language={language} />;
+            }
+            return <pre {...props}>{children}</pre>;
+          },
+          // 代码样式（内联和块级）
+          code: ({ node, inline, className, children, ...props }: any) => {
+            const match = /language-(\w+)/.exec(className || '');
+            const isBlock = !inline && match;
+
+            // 块级代码（有语言标识）- 使用 CodeBlock 组件
+            if (isBlock) {
+              const language = match[1];
+              const code = String(children).replace(/\n$/, '');
+
+              // Mermaid 图表支持
+              if (language === 'mermaid') {
+                return <MermaidBlock code={code} className="mb-4" />;
+              }
+
+              return <CodeBlock code={code} language={language} />;
+            }
+
+            // 内联代码
+            return (
+              <code className="bg-gray-200 rounded-sm px-1 font-mono text-[16px]" {...props}>
+                {children}
+              </code>
+            );
+          },
+        }}
+      >
+        {content}
+      </ReactMarkdown>
+      </div>
+    </div>
+  );
+}
