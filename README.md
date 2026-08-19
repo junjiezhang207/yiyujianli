@@ -8,8 +8,6 @@
 ![Python](https://img.shields.io/badge/Python-3.12+-3776AB?logo=python&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-blue)
 
-![首页](assets/readme/home.png)
-
 ## 项目介绍
 
 **一语简历** 是一个面向中文求职场景的 AI 简历生成与优化系统，覆盖从内容生成、结构化编辑到高质量 PDF 导出的完整流程。用户可以通过自然语言生成简历，也可以手动编辑字段、导入 PDF/图片简历，并通过 AI 助手进行诊断、润色和局部修改。
